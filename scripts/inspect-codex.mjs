@@ -80,6 +80,7 @@ for (const dir of dirs) {
       let mism = false;
       for (const s of seq) {
         const m = s.match(/total=(\d+) last=(\d+|null) Δtotal=(-?\d+|-)/);
+        if (m[3] === '0') continue; // token_count repetido: el parser lo salta
         if (m[2] !== 'null') sumLast += Number(m[2]);
         lastTot = Number(m[1]);
         if (m[3] !== '-' && m[2] !== 'null' && Number(m[3]) !== Number(m[2])) mism = true;
