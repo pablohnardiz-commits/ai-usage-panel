@@ -4,8 +4,16 @@ import os from 'node:os';
 import path from 'node:path';
 
 /** Lista recursiva de ficheros bajo `root` que cumplen `test(nombre)`. Sin error si no existe. */
-export function listFiles(root, test) {
+export function listFiles(root, test, seen = new Set()) {
   const out = [];
+  let real;
+  try {
+    real = fs.realpathSync(root);
+  } catch {
+    return out;
+  }
+  if (seen.has(real)) return out; // evita bucles con enlaces simbólicos
+  seen.add(real);
   let entries;
   try {
     entries = fs.readdirSync(root, { withFileTypes: true });
@@ -14,8 +22,19 @@ export function listFiles(root, test) {
   }
   for (const e of entries) {
     const full = path.join(root, e.name);
-    if (e.isDirectory()) out.push(...listFiles(full, test));
-    else if (e.isFile() && test(e.name)) out.push(full);
+    let isDirectory = e.isDirectory();
+    let isFile = e.isFile();
+    if (e.isSymbolicLink()) {
+      try {
+        const st = fs.statSync(full);
+        isDirectory = st.isDirectory();
+        isFile = st.isFile();
+      } catch {
+        continue; // enlace roto
+      }
+    }
+    if (isDirectory) out.push(...listFiles(full, test, seen));
+    else if (isFile && test(e.name)) out.push(full);
   }
   return out.sort();
 }

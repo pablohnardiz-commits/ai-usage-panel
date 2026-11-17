@@ -1,4 +1,5 @@
 // Parser de los logs de Codex CLI (~/.codex/sessions/**/rollout-*.jsonl).
+import fs from 'node:fs';
 import path from 'node:path';
 import { listFiles, isDir, readJsonl, homeDir, projectName, newStats, addBad, num } from './util.mjs';
 
@@ -7,6 +8,14 @@ export function codexSessionDirs(env = process.env) {
   const home = env.CODEX_HOME && env.CODEX_HOME.trim() ? env.CODEX_HOME.trim() : path.join(homeDir(env), '.codex');
   return [path.join(home, 'sessions'), path.join(home, 'archived_sessions')];
 }
+
+const realPath = (f) => {
+  try {
+    return fs.realpathSync(f);
+  } catch {
+    return path.resolve(f);
+  }
+};
 
 /** Cuenta las líneas + y - de un parche en formato apply_patch. */
 export function patchLines(patch) {
@@ -73,18 +82,34 @@ const usageTotal = (u) => num(u.total_tokens) || num(u.input_tokens) + num(u.out
  * Devuelve { usage: [...], edits: [...], stats }.
  */
 export function parseCodex(dirs) {
-  const stats = { ...newStats(), duplicates: 0, failedEdits: 0, checks: { sessions: 0, ok: 0, mismatches: [] } };
+  const stats = {
+    ...newStats(),
+    duplicates: 0,
+    failedEdits: 0,
+    sessionsWithTokens: 0,
+    filesWithoutTokens: 0,
+    filesWithoutTokensSamples: [],
+    legacyJsonFiles: 0,
+    checks: { sessions: 0, ok: 0, mismatches: [] },
+  };
   const usage = [];
   const edits = new Map(); // call_id -> registro
   const failedCalls = new Set();
-  const seenSessions = new Set();
+  const seenTokenEvents = new Set(); // sesión + momento + total acumulado
+  const sessionsWithTokens = new Set();
+  const seenFiles = new Set();
 
   for (const dir of dirs) {
     if (!isDir(dir)) continue;
     stats.dirs.push(dir);
     for (const file of listFiles(dir, (n) => n.startsWith('rollout-') && n.endsWith('.jsonl'))) {
+      const real = realPath(file);
+      if (seenFiles.has(real)) continue;
+      seenFiles.add(real);
       parseFile(file);
     }
+    // Versiones de 2025 anteriores al formato JSONL: no traen tokens, solo se cuentan para avisar.
+    stats.legacyJsonFiles += listFiles(dir, (n) => n.startsWith('rollout-') && n.endsWith('.json')).length;
   }
 
   function parseFile(file) {
@@ -201,6 +226,7 @@ export function parseCodex(dirs) {
       const cached = Math.min(num(last.cached_input_tokens), input);
       st.counted += usageTotal(last);
       fileUsage.push({
+        sig: total ? [total.input_tokens, total.cached_input_tokens, total.output_tokens, total.total_tokens].join(',') : `${lineNo}`,
         ts,
         model: st.model,
         project: projectName(st.cwd) || 'desconocido',
@@ -212,15 +238,26 @@ export function parseCodex(dirs) {
       });
     }
 
-    if (seenSessions.has(st.sessionId)) {
-      // La misma sesión en sessions/ y archived_sessions/: se cuenta una vez.
-      stats.duplicates += fileUsage.length;
-      return;
-    }
-    seenSessions.add(st.sessionId);
-
+    // Una sesión puede estar en varios ficheros (copia en archived_sessions, sesión reanudada en
+    // un fichero nuevo con el historial copiado). Se descartan solo los eventos ya vistos, no el fichero.
     const base = { tool: 'codex', sessionId: st.sessionId };
-    for (const u of fileUsage) usage.push({ ...base, ...u });
+    let fresh = 0;
+    for (const u of fileUsage) {
+      const key = `${st.sessionId}|${u.ts}|${u.sig}`;
+      delete u.sig;
+      if (seenTokenEvents.has(key)) {
+        stats.duplicates++;
+        continue;
+      }
+      seenTokenEvents.add(key);
+      usage.push({ ...base, ...u });
+      fresh++;
+    }
+    if (fresh) sessionsWithTokens.add(st.sessionId);
+    if (!fileUsage.length) {
+      stats.filesWithoutTokens++;
+      if (stats.filesWithoutTokensSamples.length < 10) stats.filesWithoutTokensSamples.push(file);
+    }
     for (const e of fileEdits) if (!edits.has(e.id)) edits.set(e.id, { ...base, ...e });
 
     if (st.hasTokens && st.prevTotal) {
@@ -234,6 +271,7 @@ export function parseCodex(dirs) {
     }
   }
 
+  stats.sessionsWithTokens = sessionsWithTokens.size;
   const editList = [];
   for (const e of edits.values()) {
     if (failedCalls.has(e.id)) stats.failedEdits++;
