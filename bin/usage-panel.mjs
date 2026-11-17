@@ -46,7 +46,9 @@ export function main(argv = process.argv.slice(2), env = process.env, log = cons
 
   const claudeDirs = values['claude-dir'] || claudeProjectDirs(env);
   const codexDirs = values['codex-dir'] || codexSessionDirs(env);
+  log('Leyendo logs de Claude Code…');
   const claude = parseClaude(claudeDirs);
+  log('Leyendo logs de Codex…');
   const codex = parseCodex(codexDirs);
   const git = values.repo ? readRepos(values.repo, { since: values.since }) : null;
 
@@ -76,7 +78,16 @@ export function main(argv = process.argv.slice(2), env = process.env, log = cons
   return data;
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const norm = (p) => {
+  let r = path.resolve(p);
+  try {
+    r = fs.realpathSync(r);
+  } catch {
+    /* se usa la ruta tal cual */
+  }
+  return process.platform === 'win32' ? r.toLowerCase() : r;
+};
+const isMain = process.argv[1] && norm(process.argv[1]) === norm(fileURLToPath(import.meta.url));
 if (isMain) {
   try {
     main();
