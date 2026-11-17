@@ -179,7 +179,7 @@
         '<div><dt>Entrada nueva</dt><dd>' + compact(t.input) + '</dd></div>' +
         '<div><dt>Salida</dt><dd>' + compact(t.output) + reasoning + '</dd></div>' +
         '<div><dt>Caché leída</dt><dd>' + compact(t.cacheRead) + '</dd></div>' +
-        '<div><dt>Caché escrita</dt><dd>' + (tool === 'codex' ? '<small>no la informa</small>' : compact(t.cacheWrite)) + '</dd></div>' +
+        '<div><dt>Caché escrita</dt><dd>' + (tool === 'codex' && !t.cacheWrite ? '<small>no la informa</small>' : compact(t.cacheWrite)) + '</dd></div>' +
         '<div><dt>Sesiones</dt><dd>' + full(t.sessions) + '</dd></div>' +
         '<div><dt>Días activos</dt><dd>' + full(t.activeDays) + '</dd></div>' +
         '<div><dt>Líneas escritas (est.)</dt><dd><span class="plus">+' + full(t.added) + '</span> / −' + full(t.removed) + '</dd></div>' +
