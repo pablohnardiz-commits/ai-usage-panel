@@ -107,7 +107,9 @@ for (const dir of dirs) {
         lastTot = Number(m[1]);
         if (m[3] !== '-' && m[2] !== 'null' && Number(m[3]) !== Number(m[2])) mism = true;
       }
-      if ((mism || sumLast !== lastTot) && seqs.length < 3) seqs.push({ version, sumLast, lastTot, seq: seq.slice(0, 30) });
+      // Igual que el parser: solo cuenta si una subida del total no coincide con el último uso
+      // (el primer evento de un fichero puede arrastrar el total de una continuación).
+      if (mism && seqs.length < 3) seqs.push({ version, sumLast, lastTot, seq: seq.slice(0, 30) });
     }
   }
 }
