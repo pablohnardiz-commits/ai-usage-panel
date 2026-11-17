@@ -1,0 +1,2 @@
+[1,2,3]
+{"type":"assistant","isSidechain":false,"userType":"external","version":"2.1.0","uuid":"u-b1","requestId":"req_b1","timestamp":"2026-11-12T08:30:00.000Z","sessionId":"sess-b","cwd":"C:\\Users\\u\\proj-b","message":{"id":"msg_b1","role":"assistant","model":"claude-opus-x","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":200}}}

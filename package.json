@@ -1,0 +1,13 @@
+{
+  "name": "ai-usage-panel",
+  "version": "0.1.0",
+  "description": "Panel local de uso de Claude Code y Codex a partir de sus logs",
+  "type": "module",
+  "bin": { "usage-panel": "bin/usage-panel.mjs" },
+  "scripts": {
+    "panel": "node bin/usage-panel.mjs --out panel-uso.html",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": { "node": ">=22" },
+  "license": "MIT"
+}
