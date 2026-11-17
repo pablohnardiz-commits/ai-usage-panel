@@ -2,10 +2,9 @@
 // Resume la ESTRUCTURA de los logs de Codex para depurar el parser.
 // No imprime contenido (ni código, ni prompts, ni rutas): solo tipos, nombres de herramientas y números.
 // Uso: node scripts/inspect-codex.mjs [carpeta-sessions]
-import fs from 'node:fs';
 import path from 'node:path';
 import { codexSessionDirs } from '../src/codex-logs.mjs';
-import { listFiles } from '../src/util.mjs';
+import { listFiles, forEachLine } from '../src/util.mjs';
 
 const dirs = process.argv[2] ? [process.argv[2]] : codexSessionDirs();
 const inc = (m, k, n = 1) => m.set(k, (m.get(k) || 0) + n);
@@ -37,14 +36,18 @@ for (const dir of dirs) {
     const types = new Set();
     const seq = [];
     let prev = null;
-    for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-      if (!raw.trim()) continue;
+    forEachLine(file, (raw) => {
+      if (raw === null) {
+        bad++;
+        return;
+      }
+      if (!raw.trim()) return;
       let o;
       try {
         o = JSON.parse(raw);
       } catch {
         bad++;
-        continue;
+        return;
       }
       const p = o.payload;
       const t = `${o.type ?? '(sin type)'}/${p && typeof p === 'object' ? p.type ?? '(sin payload.type)' : o.record_type ?? '-'}`;
@@ -67,7 +70,7 @@ for (const dir of dirs) {
           prev = tot;
         }
       }
-    }
+    });
     inc(versions, version);
     if (!hasTc) {
       noTokenFiles++;

@@ -66,3 +66,16 @@ test('estimación de líneas', () => {
   assert.equal(editLines('Write', { content: '' }).added, 0);
   assert.equal(editLines('Edit', null), null);
 });
+
+test('lectura por trozos: multibyte partido, CRLF, BOM y sin salto final', async () => {
+  const { forEachLine } = await import('../src/util.mjs');
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'usage-lines-')), 'a.txt');
+  fs.writeFileSync(f, '﻿añá€😀\r\nsegunda línea\n\núltima');
+  for (const size of [1, 2, 3, 5, 64]) {
+    const got = [];
+    forEachLine(f, (l, n) => got.push(`${n}:${l}`), size);
+    assert.deepEqual(got, ['1:añá€😀', '2:segunda línea', '3:', '4:última'], `trozo ${size}`);
+  }
+});

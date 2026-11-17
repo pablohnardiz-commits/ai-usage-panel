@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 
 /** Lista recursiva de ficheros bajo `root` que cumplen `test(nombre)`. Sin error si no existe. */
 export function listFiles(root, test, seen = new Set()) {
@@ -47,37 +48,95 @@ export function isDir(p) {
   }
 }
 
+/** Longitud máxima de una línea; por encima, Node no puede crear el texto. */
+const MAX_LINE = 400 * 1024 * 1024;
+
+/**
+ * Lee un fichero de texto por trozos y llama a `onLine(texto, número)` por cada línea.
+ * No carga el fichero entero, así que vale para logs de varios GB.
+ * Una línea demasiado larga se informa con `onLine(null, número)`.
+ */
+export function forEachLine(file, onLine, chunkSize = 4 * 1024 * 1024) {
+  const fd = fs.openSync(file, 'r');
+  const buf = Buffer.allocUnsafe(chunkSize);
+  const decoder = new StringDecoder('utf8');
+  let pending = []; // trozos de la línea en curso
+  let pendingLen = 0;
+  let tooLong = false;
+  let lineNo = 0;
+  let first = true;
+  const emit = (last) => {
+    lineNo++;
+    if (tooLong) onLine(null, lineNo);
+    else {
+      let line = pending.length ? pending.join('') + last : last;
+      if (first && line.charCodeAt(0) === 0xfeff) line = line.slice(1);
+      if (line.endsWith('\r')) line = line.slice(0, -1);
+      onLine(line, lineNo);
+    }
+    first = false;
+    pending = [];
+    pendingLen = 0;
+    tooLong = false;
+  };
+  const feed = (text) => {
+    let start = 0;
+    let nl;
+    while ((nl = text.indexOf('\n', start)) >= 0) {
+      const piece = text.slice(start, nl);
+      if (!tooLong && pendingLen + piece.length > MAX_LINE) tooLong = true;
+      emit(tooLong ? '' : piece);
+      start = nl + 1;
+    }
+    if (start < text.length && !tooLong) {
+      const piece = text.slice(start);
+      pendingLen += piece.length;
+      if (pendingLen > MAX_LINE) {
+        tooLong = true;
+        pending = [];
+      } else pending.push(piece);
+    }
+  };
+  try {
+    let n;
+    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) feed(decoder.write(buf.subarray(0, n)));
+    feed(decoder.end());
+    if (pending.length || tooLong) emit('');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /**
  * Recorre un JSONL línea a línea. Las líneas vacías se ignoran; las que no son
  * JSON válido se pasan a `onBad` y no detienen la lectura.
  */
 export function readJsonl(file, onLine, onBad) {
-  let text;
+  let n = 0;
   try {
-    text = fs.readFileSync(file, 'utf8');
+    forEachLine(file, (raw, lineNo) => {
+      if (raw === null) {
+        n++;
+        onBad({ file, line: lineNo, reason: 'línea demasiado larga' });
+        return;
+      }
+      if (!raw.trim()) return;
+      n++;
+      let obj;
+      try {
+        obj = JSON.parse(raw);
+      } catch {
+        onBad({ file, line: lineNo, reason: 'JSON inválido' });
+        return;
+      }
+      if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+        onBad({ file, line: lineNo, reason: 'no es un objeto JSON' });
+        return;
+      }
+      onLine(obj, lineNo);
+    });
   } catch (err) {
     onBad({ file, line: 0, reason: `no se pudo leer: ${err.code || err.message}` });
-    return 0;
-  }
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  const lines = text.split(/\r?\n/);
-  let n = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    if (!raw.trim()) continue;
-    n++;
-    let obj;
-    try {
-      obj = JSON.parse(raw);
-    } catch {
-      onBad({ file, line: i + 1, reason: 'JSON inválido' });
-      continue;
-    }
-    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
-      onBad({ file, line: i + 1, reason: 'no es un objeto JSON' });
-      continue;
-    }
-    onLine(obj, i + 1);
   }
   return n;
 }
