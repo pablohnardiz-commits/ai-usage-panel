@@ -64,12 +64,13 @@ function diagnostics(data) {
   const checks = d.codex?.checks;
   const cx = d.codex;
   const codexFiles = cx
-    ? `<li>Sesiones con tokens: ${fmt(cx.sessionsWithTokens || 0)} · ficheros sin ningún token_count: ${fmt(cx.filesWithoutTokens || 0)}` +
+    ? `<li>Ficheros comprimidos (.zst) leídos: ${fmt(cx.compressedFiles || 0)}</li>` +
+      `<li>Sesiones con tokens: ${fmt(cx.sessionsWithTokens || 0)} · ficheros sin ningún token_count: ${fmt(cx.filesWithoutTokens || 0)}` +
       ' (las versiones antiguas de Codex no guardaban los tokens en el log)</li>' +
       (cx.legacyJsonFiles ? `<li>Ficheros antiguos <code>rollout-*.json</code> sin tokens: ${fmt(cx.legacyJsonFiles)}</li>` : '')
     : '';
   const codexExtra = codexFiles + (checks
-    ? `<li>Comprobación con el total acumulado: ${fmt(checks.ok)} de ${fmt(checks.sessions)} sesiones cuadran` +
+    ? `<li>Comprobación con el total acumulado (cada subida del total frente al último uso): ${fmt(checks.ok)} de ${fmt(checks.sessions)} sesiones cuadran` +
       (checks.mismatches.length
         ? `; no cuadran: ${checks.mismatches
             .slice(0, 5)

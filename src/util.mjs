@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import zlib from 'node:zlib';
 
 /** Lista recursiva de ficheros bajo `root` que cumplen `test(nombre)`. Sin error si no existe. */
 export function listFiles(root, test, seen = new Set()) {
@@ -57,8 +58,6 @@ const MAX_LINE = 400 * 1024 * 1024;
  * Una línea demasiado larga se informa con `onLine(null, número)`.
  */
 export function forEachLine(file, onLine, chunkSize = 4 * 1024 * 1024) {
-  const fd = fs.openSync(file, 'r');
-  const buf = Buffer.allocUnsafe(chunkSize);
   const decoder = new StringDecoder('utf8');
   let pending = []; // trozos de la línea en curso
   let pendingLen = 0;
@@ -97,11 +96,26 @@ export function forEachLine(file, onLine, chunkSize = 4 * 1024 * 1024) {
       } else pending.push(piece);
     }
   };
+  for (const chunk of readChunks(file, chunkSize)) feed(decoder.write(chunk));
+  feed(decoder.end());
+  if (pending.length || tooLong) emit('');
+}
+
+/** Trozos del fichero; los .zst (Codex Desktop comprime las sesiones antiguas) se descomprimen. */
+function* readChunks(file, chunkSize) {
+  if (file.endsWith('.zst')) {
+    if (typeof zlib.zstdDecompressSync !== 'function') {
+      throw new Error('este Node no sabe leer .zst; actualiza a Node 22.15 o superior');
+    }
+    const data = zlib.zstdDecompressSync(fs.readFileSync(file));
+    for (let i = 0; i < data.length; i += chunkSize) yield data.subarray(i, i + chunkSize);
+    return;
+  }
+  const fd = fs.openSync(file, 'r');
+  const buf = Buffer.allocUnsafe(chunkSize);
   try {
     let n;
-    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) feed(decoder.write(buf.subarray(0, n)));
-    feed(decoder.end());
-    if (pending.length || tooLong) emit('');
+    while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) yield buf.subarray(0, n);
   } finally {
     fs.closeSync(fd);
   }

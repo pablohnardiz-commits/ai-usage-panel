@@ -69,7 +69,7 @@ export function main(argv = process.argv.slice(2), env = process.env, log = cons
     );
   }
   const cs = codex.stats;
-  log(`  Logs leídos: Claude ${f(claude.stats.files)} ficheros · Codex ${f(cs.files)} ficheros (${f(cs.sessionsWithTokens)} sesiones con tokens, ${f(cs.filesWithoutTokens)} ficheros sin tokens)`);
+  log(`  Logs leídos: Claude ${f(claude.stats.files)} ficheros · Codex ${f(cs.files)} ficheros, ${f(cs.compressedFiles)} comprimidos (${f(cs.sessionsWithTokens)} sesiones con tokens, ${f(cs.filesWithoutTokens)} ficheros sin tokens)`);
   if (!data.rows.length) log('  Aviso: no se encontraron logs. Se ha generado un panel vacío.');
   const bad = claude.stats.bad + codex.stats.bad;
   if (bad) log(`  Aviso: ${f(bad)} líneas de log no se entendieron (ver «Diagnóstico» en el panel).`);

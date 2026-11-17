@@ -20,13 +20,15 @@ const noTokenTypes = new Map();
 const noTokenVersions = new Map();
 const legacy = new Map();
 const seqs = [];
+const relations = new Map();
+const patchForms = new Map();
 let files = 0;
 let bad = 0;
 let noTokenFiles = 0;
 
 for (const dir of dirs) {
   for (const file of listFiles(dir, (n) => n.startsWith('rollout-'))) {
-    if (!file.endsWith('.jsonl')) {
+    if (!file.endsWith('.jsonl') && !file.endsWith('.jsonl.zst')) {
       inc(legacy, path.extname(file));
       continue;
     }
@@ -57,11 +59,28 @@ for (const dir of dirs) {
       if (p && (p.type === 'function_call' || p.type === 'custom_tool_call' || p.type === 'local_shell_call' || p.type === 'tool_call')) {
         inc(toolNames, `${p.type}:${p.name ?? '(sin name)'}`);
       }
+      if (raw.includes('Begin Patch') && p && (p.type === 'custom_tool_call' || p.type === 'function_call')) {
+        const txt = typeof p.input === 'string' ? p.input : typeof p.arguments === 'string' ? p.arguments : '';
+        const at = txt.indexOf('*** Begin Patch');
+        const after = at >= 0 ? txt.slice(at + 15, at + 17) : '';
+        inc(patchForms, `${p.type}:${p.name} · tras "Begin Patch": ${after === '\\n' ? 'barra+n (escapado)' : after.startsWith('\n') || after.startsWith('\r') ? 'salto de línea real' : JSON.stringify(after)}`);
+      }
       if (raw.includes('Begin Patch')) inc(patchWhere, `${t}${p && p.name ? `:${p.name}` : ''} · claves payload: ${keys(p)}`);
       else if (/apply_patch|patch_apply|"changes"/.test(raw)) inc(patchWhere, `(sin "Begin Patch") ${t}${p && p.name ? `:${p.name}` : ''} · claves payload: ${keys(p)}`);
       if (p && p.type === 'token_count') {
         const info = p.info;
         inc(tcShapes, info ? `info{${keys(info)}} total{${keys(info.total_token_usage)}} last{${keys(info.last_token_usage)}}` : `info=${info}`);
+        const l = info && info.last_token_usage;
+        if (l) {
+          const n = (k) => Number(l[k]) || 0;
+          const T = n('total_tokens');
+          const rel = [];
+          if (n('input_tokens') + n('output_tokens') === T) rel.push('in+out=total');
+          if (n('input_tokens') + n('cache_write_input_tokens') + n('output_tokens') === T && n('cache_write_input_tokens')) rel.push('in+cw+out=total');
+          if (n('input_tokens') + n('output_tokens') + n('reasoning_output_tokens') === T && n('reasoning_output_tokens')) rel.push('in+out+razon=total');
+          if (n('cached_input_tokens') + n('cache_write_input_tokens') > n('input_tokens')) rel.push('cached+cw>in');
+          inc(relations, `${rel.join(' · ') || 'ninguna'} · includes_reasoning=${info.last_usage_includes_reasoning}`);
+        }
         if (info && info.total_token_usage) {
           hasTc = true;
           const tot = info.total_token_usage.total_tokens ?? 0;
@@ -99,6 +118,8 @@ console.log(`\nVersiones de Codex (cli_version originator):\n${top(versions, 15)
 console.log(`\nTipos de línea (type/payload.type):\n${top(lineTypes, 40)}`);
 console.log(`\nLlamadas a herramientas:\n${top(toolNames, 30) || '    ninguna'}`);
 console.log(`\nDónde aparecen los parches:\n${top(patchWhere, 20) || '    en ningún sitio'}`);
+console.log(`\nForma del parche en las llamadas:\n${top(patchForms, 10) || '    ninguna'}`);
+console.log(`\nRelaciones en last_token_usage:\n${top(relations, 10) || '    ninguna'}`);
 console.log(`\nFormas de token_count:\n${top(tcShapes, 10) || '    ninguna'}`);
 console.log(`\nFicheros sin token_count: ${noTokenFiles}\n  versiones:\n${top(noTokenVersions, 10)}\n  tipos de línea que tienen:\n${top(noTokenTypes, 15)}`);
 for (const s of seqs) {
